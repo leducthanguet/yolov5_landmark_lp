@@ -1,5 +1,4 @@
 # yolov5_landmark_lp
-# yolov5_landmark_lp
 - This is a project about detect license plates for truck of Viet Nam.
 - To use code you need:
   + git clone  https://github.com/leducthanguet/yolov5_landmark_lp.git
