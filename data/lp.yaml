@@ -5,8 +5,8 @@
 #     /VOC
 #     /yolov5
 
-train: /home/ai/data/alpr/lp_yolo_dataset/train/
-val: /home/ai/data/alpr/lp_yolo_dataset/val/
+train: ./yolo_data_v2/images/train/
+val: ./yolo_data_v2/images/val/
 
 
 # number of classes
