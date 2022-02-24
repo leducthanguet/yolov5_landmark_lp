@@ -5,6 +5,7 @@ import time
 from pathlib import Path
 
 import cv2
+from paddle import crop
 import torch
 import copy
 import numpy as np
@@ -12,7 +13,7 @@ import numpy as np
 from models.experimental import attempt_load
 from utils.datasets import letterbox
 from utils.general import check_img_size, non_max_suppression_corner, scale_coords, xyxy2xywh, increment_path, \
-    find_T_matrix
+    find_T_matrix, non_max_suppression_face
 from utils.torch_utils import time_synchronized
 
 lp_transform_dest = [None, np.float32([[0, 0], [470, 0], [470, 110], [0, 110]]),
@@ -81,10 +82,10 @@ def crop_affine(img, landmarks, lp_type):
     dst = cv2.warpPerspective(img, M, lp_crop_size[lp_type])
     return dst
 
-def detect_one(model, image_path, device, img_size, vis=True):
+def detect_one(model, image_path, device, img_size, vis=False):
     # Load model
-    conf_thres = 0.7
-    iou_thres = 0.3
+    conf_thres = 0.3
+    iou_thres = 0.5
 
     print(image_path)
     orgimg = cv2.imread(image_path)  # BGR
@@ -118,7 +119,7 @@ def detect_one(model, image_path, device, img_size, vis=True):
 
     # Apply NMS
     pred = non_max_suppression_corner(pred, conf_thres, iou_thres)
-
+    print("Pred", pred)
     # print('img.shape: ', img.shape)
     # print('orgimg.shape: ', orgimg.shape)
 
@@ -134,6 +135,7 @@ def detect_one(model, image_path, device, img_size, vis=True):
             det[:, :4] = scale_coords(img.shape[2:], det[:, :4], orgimg.shape).round()
 
             det[:, 5:13] = scale_coords_landmarks(img.shape[2:], det[:, 5:13], orgimg.shape).round()
+            print("Det ", det.size()[0])
             for j in range(det.size()[0]):
                 xywh = (xyxy2xywh(det[j, :4].view(1, 4)) / gn).view(-1).tolist()
                 conf = det[j, 4].cpu().numpy()
@@ -143,6 +145,7 @@ def detect_one(model, image_path, device, img_size, vis=True):
                 # print(a/b, w0, h0)
                 # lp_type = 1 if a / b > 2.3 else 2
                 crop_images.append(crop_affine(img1, landmarks, 2))
+                # print(crop_images)
                 if vis:
                     orgimg = show_results(orgimg, xywh, conf, landmarks)
 
@@ -158,8 +161,13 @@ def detect():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = load_model(opt.weights, device)
     if os.path.isfile(opt.image):
-        result = detect_one(model, opt.image, device, opt.img_size, vis=False)
+        print("ok")
+        result, crop_images = detect_one(model, opt.image, device, opt.img_size, vis=False)
         save_path = os.path.join(opt.save_dir, os.path.basename(opt.image))
+        # print(crop)
+        for i, crop_img in enumerate(crop_images):
+            cv2.imshow("Image", crop_img)
+            cv2.waitKey(0)
         cv2.imwrite(save_path, result)
     elif os.path.isdir(opt.image):
         for image_name in os.listdir(opt.image):
@@ -170,14 +178,16 @@ def detect():
             save_path = os.path.join(opt.save_dir, image_name)
             cv2.imwrite(save_path, result)
             for i, crop_img in enumerate(crop_images):
+                cv2.imshow("Image", crop_img)
+                cv2.waitKey(0)
                 cv2.imwrite(save_path[:-3]+'_{}.jpg'.format(i), crop_img)
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--weights', nargs='+', type=str, default='runs/train/exp5/weights/last.pt',
+    parser.add_argument('--weights', nargs='+', type=str, default='/home/vision-thangld45/Downloads/module_lp_detection/best_module_lp_detection.pt',
                         help='model.pt path(s)')
-    parser.add_argument('--image', type=str, default='data/images/test.jpg', help='source')  # file/folder, 0 for webcam
+    parser.add_argument('--image', type=str, default='/home/vision-thangld45/Downloads/dataset_lp/181_010052.png', help='source')  # file/folder, 0 for webcam
     parser.add_argument('--img-size', type=int, default=640, help='inference size (pixels)')
     parser.add_argument('--project', default='runs/inference', help='save to project/name')
     parser.add_argument('--name', default='exp', help='save to project/name')
