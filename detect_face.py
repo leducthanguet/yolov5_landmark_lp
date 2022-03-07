@@ -164,31 +164,38 @@ def detect():
         print("ok")
         result, crop_images = detect_one(model, opt.image, device, opt.img_size, vis=False)
         save_path = os.path.join(opt.save_dir, os.path.basename(opt.image))
+        origin = cv2.imread(opt.image)
+        origin = cv2.resize(origin, (960, 960))
+        cv2.imshow("Origin", origin)
         # print(crop)
         for i, crop_img in enumerate(crop_images):
+
             cv2.imshow("Image", crop_img)
             cv2.waitKey(0)
-        cv2.imwrite(save_path, result)
+        # cv2.imwrite(save_path, result)
     elif os.path.isdir(opt.image):
         for image_name in os.listdir(opt.image):
             if image_name[-3:] not in img_ext:
                 continue
             image_path = os.path.join(opt.image, image_name)
+            origin = cv2.imread(image_path)
             result, crop_images = detect_one(model, image_path, device, opt.img_size, vis=True)
             save_path = os.path.join(opt.save_dir, image_name)
             cv2.imwrite(save_path, result)
+            origin = cv2.resize(origin, (960, 960))
+            cv2.imshow("Origin", origin)
             for i, crop_img in enumerate(crop_images):
                 cv2.imshow("Image", crop_img)
                 cv2.waitKey(0)
-                cv2.imwrite(save_path[:-3]+'_{}.jpg'.format(i), crop_img)
-
+                # cv2.imwrite(save_path[:-3]+'_{}.jpg'.format(i), crop_img)
+        # cv2.waitKey(0)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--weights', nargs='+', type=str, default='/home/vision-thangld45/Downloads/module_lp_detection/best_module_lp_detection.pt',
+    parser.add_argument('--weights', nargs='+', type=str, default='/home/vision-thangld45/Downloads/module_lp_detection/best_960_barcode_hanhpm.pt',
                         help='model.pt path(s)')
-    parser.add_argument('--image', type=str, default='/home/vision-thangld45/Downloads/dataset_lp/181_010052.png', help='source')  # file/folder, 0 for webcam
-    parser.add_argument('--img-size', type=int, default=640, help='inference size (pixels)')
+    parser.add_argument('--image', type=str, default='/home/vision-thangld45/Downloads/BarcodeDatasetv1.0/barcode_test/images/', help='source')  # file/folder, 0 for webcam
+    parser.add_argument('--img-size', type=int, default=960, help='inference size (pixels)')
     parser.add_argument('--project', default='runs/inference', help='save to project/name')
     parser.add_argument('--name', default='exp', help='save to project/name')
     parser.add_argument('--exist-ok', action='store_true', help='existing project/name ok, do not increment')

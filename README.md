@@ -7,3 +7,7 @@
 - To train custom dataset you need create dataset with format yolo_v5. But label.txt for per line is x y w h x1 y1 x2 y2 x3 y3 x4 y4
   + Use command line :
     python3 train.py --batch-size=32 --epoch=200 --saving_epoch=125 --data=lp.yaml --hyp=hyp.lp.yaml --weights=weights/yolov5s.pt --cfg=models/yolov5s2.yaml --cache-images
+
+- To test on custom dataset use:
+
+    python3 detect_face.py --weight "path to your weight" --img-size 960 --image "image/path folder"
