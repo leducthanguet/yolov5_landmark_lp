@@ -10,4 +10,4 @@
 
 - To test on custom dataset use:
 
-    python3 detect_face.py --weight "path to your weight" --img-size 960 --image "image/path folder"
+    python3 detect_barcode.py --weight "path to your weight" --img-size 960 --image "path to a image or path to folder"

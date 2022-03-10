@@ -5,7 +5,6 @@ import time
 from pathlib import Path
 
 import cv2
-from paddle import crop
 import torch
 import copy
 import numpy as np
@@ -17,8 +16,8 @@ from utils.general import check_img_size, non_max_suppression_corner, scale_coor
 from utils.torch_utils import time_synchronized
 
 lp_transform_dest = [None, np.float32([[0, 0], [470, 0], [470, 110], [0, 110]]),
-                     np.float32([[0, 0], [300, 0], [300, 165], [0, 165]])]
-lp_crop_size = [None, (470, 110), (300, 165)]
+                     np.float32([[0, 0], [600, 0], [600, 330], [0, 330]])]
+lp_crop_size = [None, (470, 110), (600, 330)]
 
 
 def load_model(weights, device):
@@ -82,12 +81,49 @@ def crop_affine(img, landmarks, lp_type):
     dst = cv2.warpPerspective(img, M, lp_crop_size[lp_type])
     return dst
 
+
+def show_landmark(img, lands):
+    
+    width = img.shape[1]
+    height = img.shape[0]
+    tl = 1 or round(0.002 * (height + width) / 2) + 1  # line/font thickness
+    # for land in lands:
+    x_arr = []
+    y_arr = []
+    land = lands[0]
+    for i in range(len(land)):
+        if i%2==0:
+            x_arr.append(int(land[i]*width))
+        else:
+            y_arr.append(int(land[i]*height))
+    
+    x_min = min(x_arr)
+    x_max = max(x_arr)
+    y_min = min(y_arr)
+    y_max = max(y_arr)
+            
+    # cv2.rectangle(img, (x_min, y_min), (x_max, y_max), (255, 0, 0), 10)
+    for i in range(len(x_arr)):    
+            cv2.circle(img, (x_arr[i], y_arr[i]), 10, (255, 0, 0), -1)
+            cv2.putText(img, str(i), (x_arr[i], y_arr[i]), cv2.FONT_HERSHEY_SIMPLEX, 5, (255, 0, 0), 5)
+    
+    cv2.line(img, (x_arr[0], y_arr[0]), (x_arr[1], y_arr[1]), (0, 0, 255), 5, cv2.FONT_HERSHEY_SIMPLEX)
+    cv2.line(img, (x_arr[1], y_arr[1]), (x_arr[2], y_arr[2]), (0, 0, 255), 5, cv2.FONT_HERSHEY_SIMPLEX)
+    cv2.line(img, (x_arr[2], y_arr[2]), (x_arr[3], y_arr[3]), (0, 0, 255), 5, cv2.FONT_HERSHEY_SIMPLEX)
+    cv2.line(img, (x_arr[3], y_arr[3]), (x_arr[0], y_arr[0]), (0, 0, 255), 5, cv2.FONT_HERSHEY_SIMPLEX)
+
+    new_width = int(width/4)
+    new_height = int(height/4)
+    img = cv2.resize(img, (new_width, new_height))
+
+    return img
+
+
 def detect_one(model, image_path, device, img_size, vis=False):
     # Load model
     conf_thres = 0.3
     iou_thres = 0.5
 
-    print(image_path)
     orgimg = cv2.imread(image_path)  # BGR
     img0 = copy.deepcopy(orgimg)
     img1 = copy.deepcopy(orgimg)
@@ -114,85 +150,70 @@ def detect_one(model, image_path, device, img_size, vis=False):
         img = img.unsqueeze(0)
 
     # Inference
-    t1 = time_synchronized()
     pred = model(img)[0]
 
     # Apply NMS
     pred = non_max_suppression_corner(pred, conf_thres, iou_thres)
-    print("Pred", pred)
-    # print('img.shape: ', img.shape)
-    # print('orgimg.shape: ', orgimg.shape)
 
     import math
 
     # Process detections
     crop_images = []
+    landmarkss = []
+
     for i, det in enumerate(pred):  # detections per image
         gn = torch.tensor(orgimg.shape)[[1, 0, 1, 0]].to(device)  # normalization gain whwh
         gn_lks = torch.tensor(orgimg.shape)[[1, 0, 1, 0, 1, 0, 1, 0]].to(device)  # normalization gain landmarks
         if len(det):
             # Rescale boxes from img_size to im0 size
             det[:, :4] = scale_coords(img.shape[2:], det[:, :4], orgimg.shape).round()
-
             det[:, 5:13] = scale_coords_landmarks(img.shape[2:], det[:, 5:13], orgimg.shape).round()
-            print("Det ", det.size()[0])
             for j in range(det.size()[0]):
                 xywh = (xyxy2xywh(det[j, :4].view(1, 4)) / gn).view(-1).tolist()
                 conf = det[j, 4].cpu().numpy()
                 landmarks = (det[j, 5:13].view(1, 8) / gn_lks).view(-1).tolist()
-                # a = max(math.dist(landmarks[0:2], landmarks[2:4]), math.dist(landmarks[4:6], landmarks[6:8]))*w0
-                # b = min(math.dist(landmarks[0:2], landmarks[6:8]), math.dist(landmarks[4:6], landmarks[2:4]))*h0
-                # print(a/b, w0, h0)
-                # lp_type = 1 if a / b > 2.3 else 2
+                landmarkss.append(landmarks)
                 crop_images.append(crop_affine(img1, landmarks, 2))
-                # print(crop_images)
-                if vis:
-                    orgimg = show_results(orgimg, xywh, conf, landmarks)
 
-    t2 = time.time()
-    print('runtime:', t2 - t0, t2 - t1, '\n')
-
-    # cv2.imwrite('result.jpg', orgimg)
-    return orgimg, crop_images
+    return orgimg, crop_images, landmarkss
 
 
 def detect():
-    img_ext = ['jpg', 'png']
+    img_ext = ['jpg', 'png', 'jpeg']
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = load_model(opt.weights, device)
     if os.path.isfile(opt.image):
         print("ok")
-        result, crop_images = detect_one(model, opt.image, device, opt.img_size, vis=False)
-        save_path = os.path.join(opt.save_dir, os.path.basename(opt.image))
+        result, crop_images, lands = detect_one(model, opt.image, device, opt.img_size, vis=False)
         origin = cv2.imread(opt.image)
-        origin = cv2.resize(origin, (960, 960))
-        cv2.imshow("Origin", origin)
-        # print(crop)
-        for i, crop_img in enumerate(crop_images):
 
-            cv2.imshow("Image", crop_img)
-            cv2.waitKey(0)
-        # cv2.imwrite(save_path, result)
+        if origin is not None:
+            new_img = show_landmark(origin, lands=lands[0])
+            cv2.imshow("Origin", origin)
+            for i, crop_img in enumerate(crop_images):
+                cv2.imshow("Image", crop_img)
+                cv2.waitKey(0)
+        
     elif os.path.isdir(opt.image):
         for image_name in os.listdir(opt.image):
             if image_name[-3:] not in img_ext:
                 continue
             image_path = os.path.join(opt.image, image_name)
             origin = cv2.imread(image_path)
-            result, crop_images = detect_one(model, image_path, device, opt.img_size, vis=True)
-            save_path = os.path.join(opt.save_dir, image_name)
-            cv2.imwrite(save_path, result)
-            origin = cv2.resize(origin, (960, 960))
-            cv2.imshow("Origin", origin)
-            for i, crop_img in enumerate(crop_images):
-                cv2.imshow("Image", crop_img)
-                cv2.waitKey(0)
-                # cv2.imwrite(save_path[:-3]+'_{}.jpg'.format(i), crop_img)
-        # cv2.waitKey(0)
+            if origin is not None:
+                time1 = time.time()
+                result, crop_images, lands = detect_one(model, image_path, device, opt.img_size, vis=False)
+                print(time.time() - time1)
+                new_img = show_landmark(origin, lands=lands)
+                cv2.imshow("Origin", new_img)
+                for i, crop_img in enumerate(crop_images):
+                    cv2.imshow("Image", crop_img)
+                    cv2.waitKey(0)
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--weights', nargs='+', type=str, default='/home/vision-thangld45/Downloads/module_lp_detection/best_960_barcode_hanhpm.pt',
+    parser.add_argument('--weights', nargs='+', type=str, default='/home/vision-thangld45/Downloads/module_lp_detection/yolo_landmark_960_v3.pt',
                         help='model.pt path(s)')
     parser.add_argument('--image', type=str, default='/home/vision-thangld45/Downloads/BarcodeDatasetv1.0/barcode_test/images/', help='source')  # file/folder, 0 for webcam
     parser.add_argument('--img-size', type=int, default=960, help='inference size (pixels)')
@@ -201,8 +222,5 @@ if __name__ == '__main__':
     parser.add_argument('--exist-ok', action='store_true', help='existing project/name ok, do not increment')
     opt = parser.parse_args()
     print(opt)
-    opt.save_dir = increment_path(Path(opt.project) / opt.name, exist_ok=opt.exist_ok)  # increment run
-    if not os.path.isdir(opt.save_dir):
-        os.makedirs(opt.save_dir)
-    print('Saving result to', opt.save_dir)
+
     detect()
